@@ -1,0 +1,9 @@
+.env
+# raw dataset -- only needed locally to run the notebook once
+data/
+mnt/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+#artifacts/ is intentionally NOT ignored the API needs it at
+# deploy time 
