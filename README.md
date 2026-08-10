@@ -10,8 +10,11 @@ Given a movie, it finds similar ones by content. Given a user, it produces
 personalized recommendations — blending collaborative filtering, content
 similarity, and popularity — and falls back gracefully when a user has little
 or no rating history. A poster-grid dashboard sits on top, letting you search,
-browse by genre, view a movie's details, and get recommendations 
+browse by genre, view a movie's details, and get recommendations
+
 Dataset Link: https://www.kaggle.com/datasets/grouplens/movielens-20m-dataset 
+
+Deployed Project Link: https://dashboardpy-vxcaswmmgzrpt3nzb8xziw.streamlit.app/?view=home
 ## Project flow
 
 ```
