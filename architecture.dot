@@ -1,0 +1,44 @@
+digraph architecture {
+    rankdir=TB;
+    graph [fontname="Helvetica", fontsize=16, label="Movie Recommendation System — Architecture", labelloc=t, pad=0.4, splines=ortho];
+    node [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled", margin="0.2,0.12"];
+    edge [fontname="Helvetica", fontsize=9, color="#666666"];
+
+    subgraph cluster_data {
+        label="1. Raw data";
+        style="rounded,filled"; color="#e0e0e0"; fillcolor="#f7f7f7";
+        raw [label="MovieLens 20M CSVs\nmovie / rating / tag /\ngenome_scores / link", fillcolor="#fde9c8"];
+    }
+
+    subgraph cluster_train {
+        label="2. Offline training (notebook, runs once)";
+        style="rounded,filled"; color="#e0e0e0"; fillcolor="#f7f7f7";
+        nb [label="movie_recommendation_system.ipynb\nEDA -> popularity -> content (TF-IDF) ->\nitem-CF -> MF-SVD -> hybrid -> evaluation", fillcolor="#c8e6c9"];
+    }
+
+    subgraph cluster_artifacts {
+        label="3. Model artifacts (artifacts/)";
+        style="rounded,filled"; color="#e0e0e0"; fillcolor="#f7f7f7";
+        art [label="item_similarity.npz  content_matrix.npz\nuser_likes.npz  user_residuals.npz\nmf_factors.npz  popularity.npz\nindex_maps.npz  catalogue.csv  metadata.json", fillcolor="#bbdefb"];
+    }
+
+    subgraph cluster_api {
+        label="4. FastAPI backend (main.py, recommenders.py)";
+        style="rounded,filled"; color="#e0e0e0"; fillcolor="#f7f7f7";
+        api [label="RecommenderService (loads artifacts once)\n/health /model-info /movies/search\n/recommend/popular /similar /user", fillcolor="#d1c4e9"];
+    }
+
+    subgraph cluster_ui {
+        label="5. Streamlit dashboard (dashboard.py)";
+        style="rounded,filled"; color="#e0e0e0"; fillcolor="#f7f7f7";
+        ui [label="Home (search/browse)\nDetails (poster + recs)\nFor You (personalized / cold-start)", fillcolor="#ffcdd2"];
+    }
+
+    tmdb [label="TMDB API\n(posters/overview only —\nno role in recommendations)", shape=box, style="rounded,filled", fillcolor="#fff9c4"];
+
+    raw -> nb [label="load & clean"];
+    nb -> art [label="export cell"];
+    art -> api [label="loaded at\nstartup"];
+    api -> ui [label="HTTP / JSON"];
+    tmdb -> ui [label="poster art", style=dashed];
+}
