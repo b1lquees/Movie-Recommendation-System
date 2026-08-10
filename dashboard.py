@@ -1,17 +1,13 @@
 """
-Streamlit dashboard for the Movie Recommendation API, styled as a poster-grid
-browsing experience: search or browse -> click a poster -> details page with
-overview + two recommendation rails.
+Streamlit dashboard for the Movie Recommendation API: search or browse a
+poster grid, open a movie for details + recommendations, or get personalized
+recommendations with cold-start handling.
 
 Run:
     streamlit run dashboard.py
 
-Config (env vars, or edit in the sidebar once running):
-    API_BASE_URL   -- our FastAPI backend, default http://localhost:8000
-    TMDB_API_KEY   -- TMDB v3 API key, used ONLY for poster/backdrop/overview art.
-                      Get one free at https://www.themoviedb.org/settings/api
-                      Recommendations, search, and scoring all come from our own
-                      API -- TMDB is purely a decoration layer here.
+Config: set API_BASE_URL and TMDB_API_KEY via Streamlit Cloud secrets, a
+.env file, or shell env vars. Neither is shown or editable in the UI.
 """
 import os
 
@@ -22,27 +18,20 @@ try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass  # python-dotenv not installed -- env vars set directly in the shell still work
+    pass
 
 
 def get_config(name: str, default: str = "") -> str:
-    """Streamlit Cloud secrets first (st.secrets), then env vars / .env, then default."""
     try:
         if name in st.secrets:
             return st.secrets[name]
     except Exception:
-        pass  # no secrets.toml configured (normal for local runs) -- fall through
+        pass
     return os.environ.get(name, default)
 
 
-DEFAULT_API_BASE_URL = get_config("API_BASE_URL", "http://localhost:8000")
-DEFAULT_TMDB_API_KEY = get_config("TMDB_API_KEY", "")
-
-# Safe fallbacks so these names always exist even if something upstream errors
-# before the sidebar widgets that normally set them run.
-base_url = DEFAULT_API_BASE_URL
-tmdb_api_key = DEFAULT_TMDB_API_KEY
-
+API_BASE_URL = get_config("API_BASE_URL", "http://localhost:8000")
+TMDB_API_KEY = get_config("TMDB_API_KEY", "")
 TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMG = "https://image.tmdb.org/t/p/w500"
 
@@ -61,14 +50,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# --------------------------------------------------------------------------- #
-# routing (single-file, query-param based, same pattern as the reference app)
-# --------------------------------------------------------------------------- #
 if "view" not in st.session_state:
-    st.session_state.view = "home"          # home | details | for_you
+    st.session_state.view = "home"
 if "selected_movie" not in st.session_state:
-    st.session_state.selected_movie = None  # dict: movieId, title, genres, tmdbId
+    st.session_state.selected_movie = None
 
 qp_view = st.query_params.get("view")
 if qp_view in ("home", "details", "for_you"):
@@ -97,15 +82,11 @@ def goto_details(movie: dict):
     st.rerun()
 
 
-# --------------------------------------------------------------------------- #
-# our recommendation API
-# --------------------------------------------------------------------------- #
-def api_get(base_url: str, path: str, params: dict | None = None):
-    """GET against our API. Returns (ok, data_or_error_message)."""
+def api_get(path: str, params: dict | None = None):
     try:
-        r = requests.get(f"{base_url}{path}", params=params or {}, timeout=10)
+        r = requests.get(f"{API_BASE_URL}{path}", params=params or {}, timeout=10)
     except requests.exceptions.RequestException as e:
-        return False, f"Couldn't reach the API at {base_url} -- {e}"
+        return False, f"Couldn't reach the API -- {e}"
     if r.status_code == 200:
         return True, r.json()
     try:
@@ -115,16 +96,12 @@ def api_get(base_url: str, path: str, params: dict | None = None):
     return False, f"{r.status_code}: {detail}"
 
 
-# --------------------------------------------------------------------------- #
-# TMDB (posters / backdrop / overview only -- never recommendations or scoring)
-# --------------------------------------------------------------------------- #
 @st.cache_data(ttl=3600, show_spinner=False)
 def tmdb_movie_details(tmdb_id, api_key: str):
     if not tmdb_id or not api_key:
         return None
     try:
-        r = requests.get(f"{TMDB_BASE}/movie/{int(tmdb_id)}",
-                         params={"api_key": api_key}, timeout=8)
+        r = requests.get(f"{TMDB_BASE}/movie/{int(tmdb_id)}", params={"api_key": api_key}, timeout=8)
         if r.status_code != 200:
             return None
         d = r.json()
@@ -140,16 +117,12 @@ def tmdb_movie_details(tmdb_id, api_key: str):
         return None
 
 
-def poster_url_for(tmdb_id, api_key: str):
-    details = tmdb_movie_details(tmdb_id, api_key) if tmdb_id else None
+def poster_url_for(tmdb_id):
+    details = tmdb_movie_details(tmdb_id, TMDB_API_KEY) if tmdb_id else None
     return details["poster_url"] if details else None
 
 
-# --------------------------------------------------------------------------- #
-# shared UI pieces
-# --------------------------------------------------------------------------- #
-def poster_grid(movies, api_key: str, cols: int = 6, key_prefix: str = "grid"):
-    """movies: list of dicts with at least movieId, title, genres, tmdbId."""
+def poster_grid(movies, cols: int = 6, key_prefix: str = "grid"):
     if not movies:
         st.info("No movies to show.")
         return
@@ -165,7 +138,7 @@ def poster_grid(movies, api_key: str, cols: int = 6, key_prefix: str = "grid"):
             idx += 1
 
             with colset[c]:
-                poster = poster_url_for(m.get("tmdbId"), api_key)
+                poster = poster_url_for(m.get("tmdbId"))
                 if poster:
                     st.image(poster, use_container_width=True)
                 else:
@@ -187,16 +160,42 @@ def poster_grid(movies, api_key: str, cols: int = 6, key_prefix: str = "grid"):
                     st.caption(f"{label}: {badge:.3f}")
 
 
+def render_model_info():
+    ok, info = api_get("/model-info")
+    if not ok:
+        st.caption(info)
+        return
+
+    st.table([
+        {"Field": "Dataset", "Value": str(info.get("dataset", "-"))},
+        {"Field": "Trained at", "Value": str(info.get("trained_at", "-"))},
+        {"Field": "Users modelled", "Value": str(info.get("n_users_modelled", "-"))},
+        {"Field": "Items modelled", "Value": str(info.get("n_items_modelled", "-"))},
+        {"Field": "Movies in catalogue", "Value": str(info.get("n_movies_in_catalogue", "-"))},
+    ])
+
+    config = info.get("config", {})
+    if config:
+        st.markdown("**Training config**")
+        st.table([{"Parameter": k, "Value": str(v)} for k, v in config.items()])
+
+    rating_metrics = info.get("rating_metrics", {})
+    if rating_metrics:
+        st.markdown("**Rating prediction**")
+        st.table([{"Model": name, **vals} for name, vals in rating_metrics.items()])
+
+    ranking_metrics = info.get("ranking_metrics", {})
+    if ranking_metrics:
+        st.markdown("**Top-10 ranking**")
+        st.table([{"Model": name, **vals} for name, vals in ranking_metrics.items()])
+
+
 GENRE_OPTIONS = [
     "Any", "Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary",
     "Drama", "Fantasy", "Horror", "Musical", "Mystery", "Romance", "Sci-Fi",
     "Thriller", "War", "Western",
 ]
 
-
-# --------------------------------------------------------------------------- #
-# sidebar
-# --------------------------------------------------------------------------- #
 with st.sidebar:
     st.markdown("## 🎬 Menu")
     if st.button("🏠 Home"):
@@ -205,27 +204,14 @@ with st.sidebar:
         goto_for_you()
 
     st.markdown("---")
-    base_url = st.text_input("API base URL", value=DEFAULT_API_BASE_URL)
-    # TMDB key is intentionally NOT shown or editable here -- it's loaded silently
-    # from Streamlit Cloud secrets / .env and never rendered in the UI.
-    tmdb_api_key = DEFAULT_TMDB_API_KEY
-
-    ok, health = api_get(base_url, "/health")
+    ok, health = api_get("/health")
     if ok and health.get("artifacts_loaded"):
         st.success(
             f"Connected -- {health.get('n_users_modelled', '?'):,} users, "
             f"{health.get('n_items_modelled', '?'):,} movies modelled"
         )
-    elif ok:
-        st.error("API is up but artifacts aren't loaded. Run the notebook's export "
-                  "cell and restart the API with artifacts/ next to it.")
     else:
-        st.error(health)
-
-    if not tmdb_api_key:
-        st.caption("No TMDB key configured -- posters will show as placeholders.")
-    else:
-        st.caption("Poster images enabled.")
+        st.error(health if not ok else "API is up but artifacts aren't loaded.")
 
     st.markdown("---")
     st.markdown("### 🏠 Home feed")
@@ -234,13 +220,9 @@ with st.sidebar:
     grid_cols = st.slider("Grid columns", 3, 8, 6)
 
     with st.expander("Model info"):
-        info_ok, info = api_get(base_url, "/model-info")
-        st.json(info) if info_ok else st.caption(info)
+        render_model_info()
 
 
-# --------------------------------------------------------------------------- #
-# header
-# --------------------------------------------------------------------------- #
 st.title("🎬 Movie Recommender")
 st.markdown(
     "<div class='small-muted'>Search or browse -> open a movie -> details + recommendations</div>",
@@ -249,27 +231,24 @@ st.markdown(
 st.divider()
 
 
-# ============================================================================ #
-# VIEW: HOME
-# ============================================================================ #
 if st.session_state.view == "home":
     typed = st.text_input("Search by movie title", placeholder="Type: toy story, godfather, matrix...")
     st.divider()
 
     if typed.strip():
-        ok, results = api_get(base_url, "/movies/search", {"q": typed.strip(), "limit": 24})
+        ok, results = api_get("/movies/search", {"q": typed.strip(), "limit": 24})
         if not ok:
             st.error(results)
         elif not results:
             st.info("No movies found.")
         else:
             st.markdown("### Results")
-            poster_grid(results, tmdb_api_key, cols=grid_cols, key_prefix="search")
+            poster_grid(results, cols=grid_cols, key_prefix="search")
     else:
         st.markdown(f"### 🏠 Home — {home_genre.title() if home_genre != 'Any' else 'All genres'} "
                     f"({'Popular' if 'Popular' in home_sort else 'Top rated'})")
 
-        ok, rec = api_get(base_url, "/recommend/popular",
+        ok, rec = api_get("/recommend/popular",
                           {"n": max(grid_cols * 4, 24), "genre": None if home_genre == "Any" else home_genre})
         if not ok:
             st.error(rec)
@@ -277,12 +256,9 @@ if st.session_state.view == "home":
             movies = rec["results"]
             if "Top rated" in home_sort:
                 movies = sorted(movies, key=lambda m: m.get("avg_rating") or 0, reverse=True)
-            poster_grid(movies[:grid_cols * 4], tmdb_api_key, cols=grid_cols, key_prefix="home_feed")
+            poster_grid(movies[:grid_cols * 4], cols=grid_cols, key_prefix="home_feed")
 
 
-# ============================================================================ #
-# VIEW: FOR YOU (personalized, with cold-start)
-# ============================================================================ #
 elif st.session_state.view == "for_you":
     st.header("Personalized recommendations")
 
@@ -292,10 +268,10 @@ elif st.session_state.view == "for_you":
     if is_new_user:
         st.write("Pick a few genres you enjoy and we'll recommend popular movies within them.")
         preferred = st.multiselect("Genres you like", GENRE_OPTIONS[1:])
-        user_id = 999_999_999  # outside any real training sample -> guaranteed cold-start
         if st.button("Get recommendations", type="primary"):
-            ok, rec = api_get(base_url, "/recommend/user", {
-                "user_id": user_id, "n": grid_cols * 3, "genre": None if genre_filter == "Any" else genre_filter,
+            ok, rec = api_get("/recommend/user", {
+                "user_id": 999_999_999, "n": grid_cols * 3,
+                "genre": None if genre_filter == "Any" else genre_filter,
                 "preferred_genres": ",".join(preferred) if preferred else None,
             })
             if not ok:
@@ -303,11 +279,11 @@ elif st.session_state.view == "for_you":
             else:
                 st.markdown(f"<div class='strategy-badge'>Strategy: {rec['strategy']}</div>",
                            unsafe_allow_html=True)
-                poster_grid(rec["results"], tmdb_api_key, cols=grid_cols, key_prefix="for_you_new")
+                poster_grid(rec["results"], cols=grid_cols, key_prefix="for_you_new")
     else:
         user_id = st.number_input("Your user ID", min_value=1, step=1, value=1)
         if st.button("Get recommendations", type="primary"):
-            ok, rec = api_get(base_url, "/recommend/user", {
+            ok, rec = api_get("/recommend/user", {
                 "user_id": int(user_id), "n": grid_cols * 3,
                 "genre": None if genre_filter == "Any" else genre_filter,
             })
@@ -316,12 +292,9 @@ elif st.session_state.view == "for_you":
             else:
                 st.markdown(f"<div class='strategy-badge'>Strategy: {rec['strategy']}</div>",
                            unsafe_allow_html=True)
-                poster_grid(rec["results"], tmdb_api_key, cols=grid_cols, key_prefix="for_you_known")
+                poster_grid(rec["results"], cols=grid_cols, key_prefix="for_you_known")
 
 
-# ============================================================================ #
-# VIEW: DETAILS
-# ============================================================================ #
 else:
     movie = st.session_state.selected_movie
     if not movie:
@@ -337,7 +310,7 @@ else:
         if st.button("← Back to Home"):
             goto_home()
 
-    details = tmdb_movie_details(movie.get("tmdbId"), tmdb_api_key)
+    details = tmdb_movie_details(movie.get("tmdbId"), TMDB_API_KEY)
 
     left, right = st.columns([1, 2.4], gap="large")
     with left:
@@ -361,7 +334,7 @@ else:
                        unsafe_allow_html=True)
         st.markdown("---")
         st.markdown("### Overview")
-        st.write((details or {}).get("overview") or "No overview available (no TMDB match for this title).")
+        st.write((details or {}).get("overview") or "No overview available.")
         st.markdown("</div>", unsafe_allow_html=True)
 
     if details and details.get("backdrop_url"):
@@ -371,21 +344,21 @@ else:
     st.divider()
     st.markdown("### ✅ Recommendations")
 
-    ok, sim = api_get(base_url, "/recommend/similar", {"movie_id": movie["movieId"], "n": grid_cols * 2})
+    ok, sim = api_get("/recommend/similar", {"movie_id": movie["movieId"], "n": grid_cols * 2})
     st.markdown("#### 🔎 Similar Movies (content-based)")
     if ok:
-        poster_grid(sim["results"], tmdb_api_key, cols=grid_cols, key_prefix="details_similar")
+        poster_grid(sim["results"], cols=grid_cols, key_prefix="details_similar")
     else:
         st.info(sim)
 
     primary_genre = movie.get("genres", "").split("|")[0] if movie.get("genres") else None
     if primary_genre and primary_genre != "(no genres listed)":
-        ok2, pop = api_get(base_url, "/recommend/popular", {"genre": primary_genre, "n": grid_cols * 2})
+        ok2, pop = api_get("/recommend/popular", {"genre": primary_genre, "n": grid_cols * 2})
         st.markdown(f"#### 🎭 More Like This ({primary_genre})")
         if ok2:
             poster_grid(
                 [m for m in pop["results"] if m["movieId"] != movie["movieId"]],
-                tmdb_api_key, cols=grid_cols, key_prefix="details_genre",
+                cols=grid_cols, key_prefix="details_genre",
             )
         else:
             st.info(pop)
