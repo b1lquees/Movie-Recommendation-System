@@ -198,9 +198,9 @@ GENRE_OPTIONS = [
 
 with st.sidebar:
     st.markdown("## 🎬 Menu")
-    if st.button("🏠 Home"):
+    if st.button(" Home"):
         goto_home()
-    if st.button("⭐ For You"):
+    if st.button(" For You"):
         goto_for_you()
 
     st.markdown("---")
@@ -214,10 +214,9 @@ with st.sidebar:
         st.error(health if not ok else "API is up but artifacts aren't loaded.")
 
     st.markdown("---")
-    st.markdown("### 🏠 Home feed")
+    st.markdown("###  Home feed")
     home_genre = st.selectbox("Category (genre)", GENRE_OPTIONS, index=0)
     home_sort = st.radio("Sort by", ["Popular (weighted)", "Top rated (avg rating)"])
-    grid_cols = st.slider("Grid columns", 3, 8, 6)
 
     with st.expander("Model info"):
         render_model_info()
@@ -245,7 +244,7 @@ if st.session_state.view == "home":
             st.markdown("### Results")
             poster_grid(results, cols=grid_cols, key_prefix="search")
     else:
-        st.markdown(f"### 🏠 Home — {home_genre.title() if home_genre != 'Any' else 'All genres'} "
+        st.markdown(f"###  Home — {home_genre.title() if home_genre != 'Any' else 'All genres'} "
                     f"({'Popular' if 'Popular' in home_sort else 'Top rated'})")
 
         ok, rec = api_get("/recommend/popular",
@@ -342,10 +341,10 @@ else:
         st.image(details["backdrop_url"], use_container_width=True)
 
     st.divider()
-    st.markdown("### ✅ Recommendations")
+    st.markdown("###  Recommendations")
 
     ok, sim = api_get("/recommend/similar", {"movie_id": movie["movieId"], "n": grid_cols * 2})
-    st.markdown("#### 🔎 Similar Movies (content-based)")
+    st.markdown("####  Similar Movies (content-based)")
     if ok:
         poster_grid(sim["results"], cols=grid_cols, key_prefix="details_similar")
     else:
@@ -354,7 +353,7 @@ else:
     primary_genre = movie.get("genres", "").split("|")[0] if movie.get("genres") else None
     if primary_genre and primary_genre != "(no genres listed)":
         ok2, pop = api_get("/recommend/popular", {"genre": primary_genre, "n": grid_cols * 2})
-        st.markdown(f"#### 🎭 More Like This ({primary_genre})")
+        st.markdown(f"####  More Like This ({primary_genre})")
         if ok2:
             poster_grid(
                 [m for m in pop["results"] if m["movieId"] != movie["movieId"]],
