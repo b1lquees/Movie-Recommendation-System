@@ -62,10 +62,7 @@ def require_service() -> RecommenderService:
         )
     return service
 
-
-# --------------------------------------------------------------------------- #
 # response models
-# --------------------------------------------------------------------------- #
 class Movie(BaseModel):
     movieId: int
     title: str
@@ -104,9 +101,7 @@ def df_to_scored(df: pd.DataFrame) -> List[dict]:
     return df.to_dict(orient="records")
 
 
-# --------------------------------------------------------------------------- #
 # endpoints
-# --------------------------------------------------------------------------- #
 @app.get("/health", response_model=HealthResponse)
 def health():
     if service is None:
