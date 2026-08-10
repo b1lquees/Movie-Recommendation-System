@@ -39,7 +39,7 @@ is restricted to the sampled subset. Resulting model footprint: 20,000 users x 8
 
 ## Architecture
 
-![Architecture diagram](docs/architecture.png)
+architecture.png
 
 ## Project flow
 
