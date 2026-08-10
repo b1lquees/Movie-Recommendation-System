@@ -98,8 +98,10 @@ class RecommenderService:
         self.b_user, self.b_item = mf["b_user"], mf["b_item"]
         self.mu = float(mf["mu"])
 
-        # Same taste-profile construction as the notebook's USER_PROFILES.
-        self.user_profiles = normalize(self.user_likes @ self.content_cf).astype(np.float32)
+        # NOTE: taste profiles are built per-user, on demand (see _content_scores) --
+        # never eagerly for all users at once. A full (n_users x n_features) matmul
+        # here is exactly the memory blow-up the notebook's user_likes.npz export was
+        # meant to avoid, and it's enough to OOM a small deployment box.
 
         cfg = self.metadata.get("config", {})
         self.w_cf = float(cfg.get("W_CF", 0.4))
@@ -140,8 +142,18 @@ class RecommenderService:
     def _itemcf_scores(self, u: int) -> np.ndarray:
         return np.asarray((self.user_residuals[u] @ self.item_sim_T).todense()).ravel()
 
+    def _user_profile(self, u: int):
+        """This user's liked-item centroid, built on demand -- one sparse row-vector
+        matmul, not the full (n_users x n_features) matrix."""
+        profile = self.user_likes[u] @ self.content_cf
+        nnz = profile.nnz if sp.issparse(profile) else np.count_nonzero(profile)
+        if nnz == 0:
+            return profile, 0
+        return normalize(profile), nnz
+
     def _content_scores(self, u: int) -> np.ndarray:
-        return np.asarray((self.user_profiles[u] @ self.content_cf.T).todense()).ravel()
+        profile, _ = self._user_profile(u)
+        return np.asarray((profile @ self.content_cf.T).todense()).ravel()
 
     # ------------------------------------------------------------------ #
     def search_movies(self, query: str, limit: int = 10) -> pd.DataFrame:
@@ -217,9 +229,10 @@ class RecommenderService:
             return out, strategy
 
         seen = set(self.user_residuals[u].indices)
+        _, liked_count = self._user_profile(u)
 
         # Tier 2: known user, but too little signal for a reliable content profile.
-        if len(seen) < 5 or self.user_profiles[u].nnz == 0:
+        if len(seen) < 5 or liked_count == 0:
             strategy = f"content + popularity (sparse user, {len(seen)} ratings)"
             s = 0.5 * self._z1(self._content_scores(u)) + 0.5 * self.pop_z
         # Tier 3: full hybrid.
