@@ -24,8 +24,25 @@ try:
 except ImportError:
     pass  # python-dotenv not installed -- env vars set directly in the shell still work
 
-DEFAULT_API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
-DEFAULT_TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
+
+def get_config(name: str, default: str = "") -> str:
+    """Streamlit Cloud secrets first (st.secrets), then env vars / .env, then default."""
+    try:
+        if name in st.secrets:
+            return st.secrets[name]
+    except Exception:
+        pass  # no secrets.toml configured (normal for local runs) -- fall through
+    return os.environ.get(name, default)
+
+
+DEFAULT_API_BASE_URL = get_config("API_BASE_URL", "http://localhost:8000")
+DEFAULT_TMDB_API_KEY = get_config("TMDB_API_KEY", "")
+
+# Safe fallbacks so these names always exist even if something upstream errors
+# before the sidebar widgets that normally set them run.
+base_url = DEFAULT_API_BASE_URL
+tmdb_api_key = DEFAULT_TMDB_API_KEY
+
 TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMG = "https://image.tmdb.org/t/p/w500"
 
@@ -181,11 +198,34 @@ GENRE_OPTIONS = [
 # sidebar
 # --------------------------------------------------------------------------- #
 with st.sidebar:
-    st.markdown("## Menu")
-    if st.button(" Home"):
+    st.markdown("## 🎬 Menu")
+    if st.button("🏠 Home"):
         goto_home()
-    if st.button(" For You"):
+    if st.button("⭐ For You"):
         goto_for_you()
+
+    st.markdown("---")
+    base_url = st.text_input("API base URL", value=DEFAULT_API_BASE_URL)
+    # TMDB key is intentionally NOT shown or editable here -- it's loaded silently
+    # from Streamlit Cloud secrets / .env and never rendered in the UI.
+    tmdb_api_key = DEFAULT_TMDB_API_KEY
+
+    ok, health = api_get(base_url, "/health")
+    if ok and health.get("artifacts_loaded"):
+        st.success(
+            f"Connected -- {health.get('n_users_modelled', '?'):,} users, "
+            f"{health.get('n_items_modelled', '?'):,} movies modelled"
+        )
+    elif ok:
+        st.error("API is up but artifacts aren't loaded. Run the notebook's export "
+                  "cell and restart the API with artifacts/ next to it.")
+    else:
+        st.error(health)
+
+    if not tmdb_api_key:
+        st.caption("No TMDB key configured -- posters will show as placeholders.")
+    else:
+        st.caption("Poster images enabled.")
 
     st.markdown("---")
     st.markdown("### 🏠 Home feed")
@@ -197,7 +237,10 @@ with st.sidebar:
         info_ok, info = api_get(base_url, "/model-info")
         st.json(info) if info_ok else st.caption(info)
 
+
+# --------------------------------------------------------------------------- #
 # header
+# --------------------------------------------------------------------------- #
 st.title("🎬 Movie Recommender")
 st.markdown(
     "<div class='small-muted'>Search or browse -> open a movie -> details + recommendations</div>",
@@ -205,7 +248,10 @@ st.markdown(
 )
 st.divider()
 
+
+# ============================================================================ #
 # VIEW: HOME
+# ============================================================================ #
 if st.session_state.view == "home":
     typed = st.text_input("Search by movie title", placeholder="Type: toy story, godfather, matrix...")
     st.divider()
@@ -233,7 +279,10 @@ if st.session_state.view == "home":
                 movies = sorted(movies, key=lambda m: m.get("avg_rating") or 0, reverse=True)
             poster_grid(movies[:grid_cols * 4], tmdb_api_key, cols=grid_cols, key_prefix="home_feed")
 
+
+# ============================================================================ #
 # VIEW: FOR YOU (personalized, with cold-start)
+# ============================================================================ #
 elif st.session_state.view == "for_you":
     st.header("Personalized recommendations")
 
@@ -269,7 +318,10 @@ elif st.session_state.view == "for_you":
                            unsafe_allow_html=True)
                 poster_grid(rec["results"], tmdb_api_key, cols=grid_cols, key_prefix="for_you_known")
 
+
+# ============================================================================ #
 # VIEW: DETAILS
+# ============================================================================ #
 else:
     movie = st.session_state.selected_movie
     if not movie:
