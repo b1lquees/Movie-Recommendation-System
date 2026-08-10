@@ -217,6 +217,7 @@ with st.sidebar:
     st.markdown("###  Home feed")
     home_genre = st.selectbox("Category (genre)", GENRE_OPTIONS, index=0)
     home_sort = st.radio("Sort by", ["Popular (weighted)", "Top rated (avg rating)"])
+    grid_cols = st.slider("Grid columns", 3, 8, 6)
 
     with st.expander("Model info"):
         render_model_info()
