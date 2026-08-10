@@ -181,30 +181,11 @@ GENRE_OPTIONS = [
 # sidebar
 # --------------------------------------------------------------------------- #
 with st.sidebar:
-    st.markdown("## 🎬 Menu")
-    if st.button("🏠 Home"):
+    st.markdown("## Menu")
+    if st.button(" Home"):
         goto_home()
-    if st.button("⭐ For You"):
+    if st.button(" For You"):
         goto_for_you()
-
-    st.markdown("---")
-    base_url = st.text_input("API base URL", value=DEFAULT_API_BASE_URL)
-    tmdb_api_key = st.text_input("TMDB API key (for posters)", value=DEFAULT_TMDB_API_KEY, type="password")
-
-    ok, health = api_get(base_url, "/health")
-    if ok and health.get("artifacts_loaded"):
-        st.success(
-            f"Connected -- {health.get('n_users_modelled', '?'):,} users, "
-            f"{health.get('n_items_modelled', '?'):,} movies modelled"
-        )
-    elif ok:
-        st.error("API is up but artifacts aren't loaded. Run the notebook's export "
-                  "cell and restart the API with artifacts/ next to it.")
-    else:
-        st.error(health)
-
-    if not tmdb_api_key:
-        st.caption("No TMDB key set -- posters will show as placeholders.")
 
     st.markdown("---")
     st.markdown("### 🏠 Home feed")
@@ -216,10 +197,7 @@ with st.sidebar:
         info_ok, info = api_get(base_url, "/model-info")
         st.json(info) if info_ok else st.caption(info)
 
-
-# --------------------------------------------------------------------------- #
 # header
-# --------------------------------------------------------------------------- #
 st.title("🎬 Movie Recommender")
 st.markdown(
     "<div class='small-muted'>Search or browse -> open a movie -> details + recommendations</div>",
@@ -227,10 +205,7 @@ st.markdown(
 )
 st.divider()
 
-
-# ============================================================================ #
 # VIEW: HOME
-# ============================================================================ #
 if st.session_state.view == "home":
     typed = st.text_input("Search by movie title", placeholder="Type: toy story, godfather, matrix...")
     st.divider()
@@ -258,10 +233,7 @@ if st.session_state.view == "home":
                 movies = sorted(movies, key=lambda m: m.get("avg_rating") or 0, reverse=True)
             poster_grid(movies[:grid_cols * 4], tmdb_api_key, cols=grid_cols, key_prefix="home_feed")
 
-
-# ============================================================================ #
 # VIEW: FOR YOU (personalized, with cold-start)
-# ============================================================================ #
 elif st.session_state.view == "for_you":
     st.header("Personalized recommendations")
 
@@ -297,10 +269,7 @@ elif st.session_state.view == "for_you":
                            unsafe_allow_html=True)
                 poster_grid(rec["results"], tmdb_api_key, cols=grid_cols, key_prefix="for_you_known")
 
-
-# ============================================================================ #
 # VIEW: DETAILS
-# ============================================================================ #
 else:
     movie = st.session_state.selected_movie
     if not movie:
